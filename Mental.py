@@ -42,7 +42,6 @@ if uploaded_file is not None:
         X = df.drop(target_column, axis=1)
         y = df[target_column]
 
-
         # Identify numerical and categorical columns
         numerical_cols = X.select_dtypes(include=np.number).columns
         categorical_cols = X.select_dtypes(exclude=np.number).columns
@@ -53,7 +52,6 @@ if uploaded_file is not None:
 
         X[numerical_cols] = num_imputer.fit_transform(X[numerical_cols])
         X[categorical_cols] = cat_imputer.fit_transform(X[categorical_cols])
-
 
         # Create a column transformer for preprocessing
         preprocessor = ColumnTransformer(
