@@ -120,6 +120,28 @@ if uploaded_file is not None:
             ax.set_title(f"Histogram of {col}")
             st.pyplot(fig)
 
+        # --- Prediction Section ---
+        st.sidebar.header("Make Predictions")
+        uploaded_test_file = st.sidebar.file_uploader("Upload test data (CSV format) for predictions", type=["csv"])
+
+        if uploaded_test_file is not None:
+            try:
+                # Load test data
+                test_df = pd.read_csv(uploaded_test_file)
+                st.write("### Uploaded Test Data", test_df)
+
+                # Preprocess the test data
+                if scale_data:
+                    test_df = scaler.transform(test_df)
+
+                # Make predictions
+                predictions = best_model.predict(test_df)
+                st.write("### Predictions")
+                st.write(pd.DataFrame({"Prediction": predictions}))
+
+            except Exception as e:
+                st.error(f"An error occurred while making predictions: {e}")
+
     except Exception as e:
         st.error(f"An error occurred: {e}")
 else:
