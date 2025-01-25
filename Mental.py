@@ -10,10 +10,10 @@ from sklearn.metrics import accuracy_score, confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-st.title("Machine Learning App")
+st.title("Mental Disorder Prediction App")
 
 # File Upload
-uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
+uploaded_file = st.file_uploader("Upload your dataset (CSV format)", type=["csv"])
 
 if uploaded_file is not None:
     try:
@@ -23,7 +23,7 @@ if uploaded_file is not None:
 
         # --- Data Preprocessing ---
         st.sidebar.header("Data Preprocessing")
-        target_column = st.sidebar.selectbox("Select the target column", df.columns)
+        target_column = st.sidebar.selectbox("Select the target column (mental disorder label)", df.columns)
 
         # Handle missing values
         missing_strategy = st.sidebar.selectbox("Missing value handling", ["Backfill", "Forward Fill", "Drop Rows", "Mean Imputation"])
@@ -36,7 +36,7 @@ if uploaded_file is not None:
         elif missing_strategy == "Mean Imputation":
             df.fillna(df.mean(), inplace=True)
 
-        # Convert object columns to numeric if possible
+        # Convert object columns to numeric if necessary
         label_encoder = LabelEncoder()
         for col in df.columns:
             if df[col].dtype == 'object':
