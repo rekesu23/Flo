@@ -2,13 +2,15 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.preprocessing import StandardScaler, LabelEncoder, OneHotEncoder
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, confusion_matrix
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.impute import SimpleImputer
+
 
 st.title("Mental Disorder Prediction App")
 
@@ -19,48 +21,46 @@ if uploaded_file is not None:
     try:
         # Read the CSV file
         df = pd.read_csv(uploaded_file)
-        st.write("### Uploaded Dataset", df)
+        st.write("### Uploaded Dataset", df.head()) #Show only the head for large datasets
 
         # --- Data Preprocessing ---
         st.sidebar.header("Data Preprocessing")
         target_column = st.sidebar.selectbox("Select the target column (mental disorder label)", df.columns)
 
-        # Handle missing values
-        missing_strategy = st.sidebar.selectbox("Missing value handling", ["Backfill", "Forward Fill", "Drop Rows", "Mean Imputation"])
-        if missing_strategy == "Backfill":
-            df.fillna(method='bfill', inplace=True)
-        elif missing_strategy == "Forward Fill":
-            df.fillna(method='ffill', inplace=True)
-        elif missing_strategy == "Drop Rows":
-            df.dropna(inplace=True)
-        elif missing_strategy == "Mean Imputation":
-            df.fillna(df.mean(), inplace=True)
-
-        # Convert object columns to numeric if necessary
-        label_encoder = LabelEncoder()
-        for col in df.columns:
-            if df[col].dtype == 'object':
-                try:
-                    df[col] = pd.to_numeric(df[col])
-                except ValueError:
-                    df[col] = label_encoder.fit_transform(df[col])
-
-        # Separate features and target
+        # Separate features and target *before* handling missing values
         X = df.drop(target_column, axis=1)
         y = df[target_column]
 
+        #Handle Missing Values (Improved)
+        num_imputer = SimpleImputer(strategy='mean') #for numerical columns
+        cat_imputer = SimpleImputer(strategy='most_frequent') # for categorical columns
+
+        num_cols = X.select_dtypes(include=np.number).columns
+        cat_cols = X.select_dtypes(exclude=np.number).columns
+
+        X[num_cols] = num_imputer.fit_transform(X[num_cols])
+        X[cat_cols] = cat_imputer.fit_transform(X[cat_cols])
+
+
+        #Improved Encoding (Handles both numerical and categorical)
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ('num', StandardScaler(), num_cols),
+                ('cat', OneHotEncoder(handle_unknown='ignore'), cat_cols)
+            ])
+
+
+        X = preprocessor.fit_transform(X)
+
+
         # Split data into training and testing sets
         test_size = st.sidebar.slider("Test set size (%)", 10, 50, 20) / 100
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42,stratify=y) #Stratify for balanced classes
 
-        # Scale the data
-        scale_data = st.sidebar.checkbox("Scale Features", value=True)
-        if scale_data:
-            scaler = StandardScaler()
-            X_train = scaler.fit_transform(X_train)
-            X_test = scaler.transform(X_test)
 
-        st.write("### Preprocessed Dataset", df)
+        st.write("### Preprocessed Dataset (Example - first 5 rows):")
+        st.write(pd.DataFrame(X[:5, :]).head()) #Show a sample of preprocessed data
+
 
         # --- Model Training and Evaluation ---
         st.sidebar.header("Model Selection")
@@ -70,29 +70,26 @@ if uploaded_file is not None:
         results = {}
         models = {}
 
-        if "Decision Tree" in selected_models:
-            dt = DecisionTreeClassifier()
-            dt.fit(X_train, y_train)
-            dt_pred = dt.predict(X_test)
-            dt_accuracy = accuracy_score(y_test, dt_pred)
-            results["Decision Tree"] = dt_accuracy
-            models["Decision Tree"] = dt
+        for model_name in selected_models:
+            if model_name == "Decision Tree":
+                model = DecisionTreeClassifier()
+            elif model_name == "Random Forest":
+                model = RandomForestClassifier()
+            elif model_name == "Logistic Regression":
+                model = LogisticRegression(max_iter=1000)
+            else:
+                continue
 
-        if "Random Forest" in selected_models:
-            rf = RandomForestClassifier()
-            rf.fit(X_train, y_train)
-            rf_pred = rf.predict(X_test)
-            rf_accuracy = accuracy_score(y_test, rf_pred)
-            results["Random Forest"] = rf_accuracy
-            models["Random Forest"] = rf
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
+            accuracy = accuracy_score(y_test, y_pred)
+            results[model_name] = accuracy
+            models[model_name] = model
 
-        if "Logistic Regression" in selected_models:
-            lr = LogisticRegression(max_iter=1000)
-            lr.fit(X_train, y_train)
-            lr_pred = lr.predict(X_test)
-            lr_accuracy = accuracy_score(y_test, lr_pred)
-            results["Logistic Regression"] = lr_accuracy
-            models["Logistic Regression"] = lr
+            # Add Classification Report
+            report = classification_report(y_test, y_pred)
+            st.write(f"### {model_name} Classification Report:")
+            st.text(report)
 
         if results:
             st.write("### Model Accuracy")
@@ -106,19 +103,14 @@ if uploaded_file is not None:
             # Confusion Matrix
             cm = confusion_matrix(y_test, best_model.predict(X_test))
             fig, ax = plt.subplots(figsize=(8, 6))
-            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=label_encoder.classes_, yticklabels=label_encoder.classes_)
+            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')#, xticklabels=label_encoder.classes_, yticklabels=label_encoder.classes_) #Removed label encoding here as it's handled by OneHotEncoder
             plt.xlabel('Predicted')
             plt.ylabel('Actual')
             plt.title(f'Confusion Matrix for {best_model_name}')
             st.pyplot(fig)
 
-        # Visualizations
-        st.write("### Feature Histograms")
-        for col in X.columns:
-            fig, ax = plt.subplots(figsize=(6, 4))
-            sns.histplot(df[col], kde=True, ax=ax)
-            ax.set_title(f"Histogram of {col}")
-            st.pyplot(fig)
+        # Removed Histograms -  Not very useful for high-dimensional data and may be misleading
+
 
         # --- Prediction Section ---
         st.sidebar.header("Make Predictions")
@@ -128,14 +120,14 @@ if uploaded_file is not None:
             try:
                 # Load test data
                 test_df = pd.read_csv(uploaded_test_file)
-                st.write("### Uploaded Test Data", test_df)
+                st.write("### Uploaded Test Data", test_df.head())
 
-                # Preprocess the test data
-                if scale_data:
-                    test_df = scaler.transform(test_df)
+                # Preprocess test data (using the same preprocessor as training data)
+                test_X = test_df.drop(target_column, axis=1)  #assuming same columns as training data
+                test_X = preprocessor.transform(test_X)
 
                 # Make predictions
-                predictions = best_model.predict(test_df)
+                predictions = best_model.predict(test_X)
                 st.write("### Predictions")
                 st.write(pd.DataFrame({"Prediction": predictions}))
 
@@ -146,3 +138,5 @@ if uploaded_file is not None:
         st.error(f"An error occurred: {e}")
 else:
     st.info("Please upload a CSV file to get started.")
+
+from sklearn.compose import ColumnTransformer
