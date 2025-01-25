@@ -107,6 +107,26 @@ if uploaded_file is not None:
             except Exception as e:
                 st.error(f"An error occurred during prediction: {e}")
 
+        # --- Category Frequency Analysis ---
+        st.sidebar.header("Category Frequency")
+        try:
+            category_counts = y.value_counts()
+            st.write("### Category Counts:")
+            st.write(category_counts)
+            most_frequent_category = category_counts.index[0]
+            st.write(f"The most frequent category is: {most_frequent_category} with {category_counts[0]} patients.")
+
+
+            fig, ax = plt.subplots()
+            category_counts.plot(kind='bar', ax=ax)
+            ax.set_xlabel("Category")
+            ax.set_ylabel("Number of Patients")
+            ax.set_title("Distribution of Mental Disorder Categories")
+            st.pyplot(fig)
+        except Exception as e:
+            st.error(f"Error analyzing category frequencies: {e}")
+
+
     except Exception as e:
         st.error(f"An error occurred: {e}")
 else:
