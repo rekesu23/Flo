@@ -4,11 +4,12 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
-from sklearn.impute import SimpleImputer
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -26,16 +27,12 @@ if uploaded_file is not None:
         # --- Data Preprocessing ---
         st.sidebar.header("Data Preprocessing")
 
-        # --- Option to define "SeriousDisorder" in code or CSV ---
-        define_serious_in_code = st.sidebar.checkbox("Define 'Serious Disorder' in code (less recommended)")
-
-        if define_serious_in_code:
-            # Define "SeriousDisorder" based on Mood Swing and Suicidal thought (Modify as needed)
-            df["SeriousDisorder"] = ((df["Mood Swing"] == "YES") & (df["Suicidal thought"] == "YES")).astype(int)
-            target_column = "SeriousDisorder"
-        else:
-            # Assume "SeriousDisorder" column already exists in the CSV
-            target_column = st.sidebar.selectbox("Select target column ('SeriousDisorder' if in CSV):", df.columns)
+        # Get target column (with error handling)
+        try:
+            target_column = st.sidebar.selectbox("Select target column ('SeriousDisorder' if present):", df.columns)
+        except Exception as e:
+            st.error(f"Error selecting target column: {e}. Please ensure your CSV has a suitable target column.")
+            st.stop() # Stop execution if target selection fails
 
 
         # Separate features and target
@@ -46,76 +43,51 @@ if uploaded_file is not None:
         numerical_cols = X.select_dtypes(include=np.number).columns
         categorical_cols = X.select_dtypes(exclude=np.number).columns
 
-        # Impute missing values separately for numerical and categorical features
-        num_imputer = SimpleImputer(strategy='mean')
-        cat_imputer = SimpleImputer(strategy='most_frequent')
-
-        X[numerical_cols] = num_imputer.fit_transform(X[numerical_cols])
-        X[categorical_cols] = cat_imputer.fit_transform(X[categorical_cols])
-
-        # Create a column transformer for preprocessing
+        # Create preprocessing pipeline (improved)
         preprocessor = ColumnTransformer(
             transformers=[
-                ('num', StandardScaler(), numerical_cols),
-                ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_cols)
+                ('num', Pipeline([('imputer', SimpleImputer(strategy='mean')), ('scaler', StandardScaler())]), numerical_cols),
+                ('cat', Pipeline([('imputer', SimpleImputer(strategy='most_frequent')), ('encoder', OneHotEncoder(handle_unknown='ignore'))]), categorical_cols)
             ])
 
-        # Apply preprocessing
-        X = preprocessor.fit_transform(X)
-
-        # Split data
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-
-        st.write("### Preprocessed Dataset (Example - first 5 rows):")
-        st.write(pd.DataFrame(X[:5, :]).head())
-
-
-        # --- Model Training and Evaluation ---
+        #Improved Model Selection and Training
         st.sidebar.header("Model Selection")
-        model_options = ["Decision Tree", "Random Forest", "Logistic Regression"]
-        selected_models = st.sidebar.multiselect("Select models to train", model_options, default=model_options)
+        model_options = {
+            "Decision Tree": DecisionTreeClassifier(),
+            "Random Forest": RandomForestClassifier(),
+            "Logistic Regression": LogisticRegression(max_iter=1000)
+        }
+        selected_model_name = st.sidebar.selectbox("Select a model:", list(model_options.keys()))
+        model = model_options[selected_model_name]
 
-        results = {}
-        models = {}
 
-        for model_name in selected_models:
-            if model_name == "Decision Tree":
-                model = DecisionTreeClassifier()
-            elif model_name == "Random Forest":
-                model = RandomForestClassifier()
-            elif model_name == "Logistic Regression":
-                model = LogisticRegression(max_iter=1000)
-            else:
-                continue
+        # Create and train the pipeline
+        pipeline = Pipeline([
+            ('preprocessor', preprocessor),
+            ('classifier', model)
+        ])
 
-            model.fit(X_train, y_train)
-            y_pred = model.predict(X_test)
-            accuracy = accuracy_score(y_test, y_pred)
-            results[model_name] = accuracy
-            models[model_name] = model
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+        pipeline.fit(X_train, y_train)
 
-            # Add Classification Report
-            report = classification_report(y_test, y_pred)
-            st.write(f"### {model_name} Classification Report:")
-            st.text(report)
+        # Evaluate the model
+        y_pred = pipeline.predict(X_test)
+        accuracy = accuracy_score(y_test, y_pred)
+        report = classification_report(y_test, y_pred)
+        cm = confusion_matrix(y_test, y_pred)
 
-        if results:
-            st.write("### Model Accuracy")
-            for model_name, accuracy in results.items():
-                st.write(f"{model_name}: {accuracy:.2f}")
+        st.write(f"### {selected_model_name} Results:")
+        st.write(f"Accuracy: {accuracy:.2f}")
+        st.write("Classification Report:")
+        st.text(report)
 
-            best_model_name = max(results, key=results.get)
-            best_model = models[best_model_name]
-            st.write(f"### Best Model: {best_model_name} with Accuracy: {results[best_model_name]:.2f}")
-
-            # Confusion Matrix
-            cm = confusion_matrix(y_test, best_model.predict(X_test))
-            fig, ax = plt.subplots(figsize=(8, 6))
-            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
-            plt.xlabel('Predicted')
-            plt.ylabel('Actual')
-            plt.title(f'Confusion Matrix for {best_model_name}')
-            st.pyplot(fig)
+        #Confusion Matrix
+        fig, ax = plt.subplots(figsize=(8, 6))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+        plt.xlabel('Predicted')
+        plt.ylabel('Actual')
+        plt.title(f'Confusion Matrix for {selected_model_name}')
+        st.pyplot(fig)
 
 
         # --- Prediction Section ---
@@ -126,22 +98,16 @@ if uploaded_file is not None:
             try:
                 test_df = pd.read_csv(uploaded_test_file)
                 st.write("### Uploaded Test Data", test_df.head())
+                test_X = test_df.drop(target_column, axis=1, errors='ignore') #ignore errors if column not found
 
-                # Preprocess test data
-                test_X = test_df.drop(target_column, axis=1)
-                test_X = preprocessor.transform(test_X)
-
-                # Make predictions
-                predictions = best_model.predict(test_X)
+                predictions = pipeline.predict(test_X)
                 st.write("### Predictions")
                 st.write(pd.DataFrame({"Prediction": predictions}))
 
             except Exception as e:
-                st.error(f"An error occurred while making predictions: {e}")
+                st.error(f"An error occurred during prediction: {e}")
 
     except Exception as e:
         st.error(f"An error occurred: {e}")
 else:
     st.info("Please upload a CSV file.")
-
-from sklearn.compose import ColumnTransformer
