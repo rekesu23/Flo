@@ -22,10 +22,19 @@ if uploaded_file is not None:
         st.write("### Uploaded Dataset", df)
 
         # --- Data Preprocessing ---
-        target_column = st.selectbox("Select the target column", df.columns)
+        st.sidebar.header("Data Preprocessing")
+        target_column = st.sidebar.selectbox("Select the target column", df.columns)
 
         # Handle missing values
-        df.fillna(method='bfill', inplace=True)
+        missing_strategy = st.sidebar.selectbox("Missing value handling", ["Backfill", "Forward Fill", "Drop Rows", "Mean Imputation"])
+        if missing_strategy == "Backfill":
+            df.fillna(method='bfill', inplace=True)
+        elif missing_strategy == "Forward Fill":
+            df.fillna(method='ffill', inplace=True)
+        elif missing_strategy == "Drop Rows":
+            df.dropna(inplace=True)
+        elif missing_strategy == "Mean Imputation":
+            df.fillna(df.mean(), inplace=True)
 
         # Convert object columns to numeric if possible
         label_encoder = LabelEncoder()
@@ -41,18 +50,22 @@ if uploaded_file is not None:
         y = df[target_column]
 
         # Split data into training and testing sets
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        test_size = st.sidebar.slider("Test set size (%)", 10, 50, 20) / 100
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42)
 
         # Scale the data
-        scaler = StandardScaler()
-        X_train = scaler.fit_transform(X_train)
-        X_test = scaler.transform(X_test)
+        scale_data = st.sidebar.checkbox("Scale Features", value=True)
+        if scale_data:
+            scaler = StandardScaler()
+            X_train = scaler.fit_transform(X_train)
+            X_test = scaler.transform(X_test)
 
         st.write("### Preprocessed Dataset", df)
 
         # --- Model Training and Evaluation ---
+        st.sidebar.header("Model Selection")
         model_options = ["Decision Tree", "Random Forest", "Logistic Regression"]
-        selected_models = st.multiselect("Select models to train", model_options)
+        selected_models = st.sidebar.multiselect("Select models to train", model_options, default=model_options)
 
         results = {}
         models = {}
