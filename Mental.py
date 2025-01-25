@@ -25,11 +25,23 @@ if uploaded_file is not None:
 
         # --- Data Preprocessing ---
         st.sidebar.header("Data Preprocessing")
-        target_column = st.sidebar.selectbox("Select target column:", df.columns)
+
+        # --- Option to define "SeriousDisorder" in code or CSV ---
+        define_serious_in_code = st.sidebar.checkbox("Define 'Serious Disorder' in code (less recommended)")
+
+        if define_serious_in_code:
+            # Define "SeriousDisorder" based on Mood Swing and Suicidal thought (Modify as needed)
+            df["SeriousDisorder"] = ((df["Mood Swing"] == "YES") & (df["Suicidal thought"] == "YES")).astype(int)
+            target_column = "SeriousDisorder"
+        else:
+            # Assume "SeriousDisorder" column already exists in the CSV
+            target_column = st.sidebar.selectbox("Select target column ('SeriousDisorder' if in CSV):", df.columns)
+
 
         # Separate features and target
         X = df.drop(target_column, axis=1)
         y = df[target_column]
+
 
         # Identify numerical and categorical columns
         numerical_cols = X.select_dtypes(include=np.number).columns
@@ -56,10 +68,8 @@ if uploaded_file is not None:
         # Split data
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
-
-
         st.write("### Preprocessed Dataset (Example - first 5 rows):")
-        st.write(pd.DataFrame(X[:5, :]).head()) #Show a sample of preprocessed data
+        st.write(pd.DataFrame(X[:5, :]).head())
 
 
         # --- Model Training and Evaluation ---
@@ -103,13 +113,11 @@ if uploaded_file is not None:
             # Confusion Matrix
             cm = confusion_matrix(y_test, best_model.predict(X_test))
             fig, ax = plt.subplots(figsize=(8, 6))
-            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')#, xticklabels=label_encoder.classes_, yticklabels=label_encoder.classes_) #Removed label encoding here as it's handled by OneHotEncoder
+            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
             plt.xlabel('Predicted')
             plt.ylabel('Actual')
             plt.title(f'Confusion Matrix for {best_model_name}')
             st.pyplot(fig)
-
-        # Removed Histograms -  Not very useful for high-dimensional data and may be misleading
 
 
         # --- Prediction Section ---
@@ -118,12 +126,11 @@ if uploaded_file is not None:
 
         if uploaded_test_file is not None:
             try:
-                # Load test data
                 test_df = pd.read_csv(uploaded_test_file)
                 st.write("### Uploaded Test Data", test_df.head())
 
-                # Preprocess test data (using the same preprocessor as training data)
-                test_X = test_df.drop(target_column, axis=1)  #assuming same columns as training data
+                # Preprocess test data
+                test_X = test_df.drop(target_column, axis=1)
                 test_X = preprocessor.transform(test_X)
 
                 # Make predictions
