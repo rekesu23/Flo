@@ -1,6 +1,6 @@
 steamlit
 pandas
 numpy
+scikit-learn
 matplotlib
 seaborn
-scikit-learn
